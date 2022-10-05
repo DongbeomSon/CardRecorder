@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 import pytesseract
 import re
-import requests
+import requests #request html
+from bs4 import BeautifulSoup #html parsing
 
 pytesseract.pytesseract.tesseract_cmd = R'C:\Program Files\Tesseract-OCR\tesseract'
 config = ('-l eng --oem 3 --psm 7')
@@ -10,7 +11,7 @@ config = ('-l eng --oem 3 --psm 7')
 img = cv2.imread('./resource/card.jpg')
 g = 3.0
 
-img = img.astype(np.float)
+img = img.astype(np.float64)
 img = ((img / 255) ** (1 / g)) * 255
 img = img.astype(np.uint8)
 
@@ -27,16 +28,16 @@ cv2.rectangle(roi, (0,0), (w-1, h-1), (0,255,0)) # roi 전체에 사각형 그�
 cv2.imshow("img",img)
 cv2.imshow("roi", img2)
 roi_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-roi_gray = cv2.resize(roi_gray, dsize=(0, 0), fx=4, fy=4, interpolation=cv2.INTER_LINEAR)
+roi_gray = cv2.resize(roi_gray, dsize=(0, 0), fx=8, fy=8, interpolation=cv2.INTER_LINEAR)
 
 roi_bi = cv2.threshold(roi_gray,0,255,cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 cv2.imshow("roi_gray", roi_bi)
 
-re_roi_bi = cv2.resize(roi_bi, dsize=(0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+#re_roi_bi = cv2.resize(roi_bi, dsize=(0, 0), fx=8, fy=8, interpolation=cv2.INTER_LINEAR)
 
-cv2.imshow("re", re_roi_bi)
+#cv2.imshow("re", re_roi_bi)
 
-text = pytesseract.image_to_string(re_roi_bi, config=config)
+text = pytesseract.image_to_string(roi_bi, config=config)
 print(text)
 text = text.replace(" ", "")
 text = text.replace("\n", "")
@@ -62,10 +63,58 @@ is_ok = req.ok
 print(status)
 print(req.ok)
 print(type(html))
-
 f = open('test.html','w', encoding = 'utf-8')
 f.write(html)
 f.close()
+
+soup = BeautifulSoup(html, 'html.parser')
+
+
+cardInfo = soup.select(
+    '#card_list > div > input.cnm'
+    )
+print(cardInfo)
+## my_titles는 list 객체
+for t in cardInfo:
+    ## Tag의 속성을 가져오기
+    print(t.text)
+    print(t.get('value'))
+
+cardIdLink = soup.select(
+    '#card_list > div > input.link_value'
+)
+
+for t in cardIdLink:
+    ## Tag의 속성을 가져오기
+    print(t.text)
+    cardId = t.get('value')
+
+card_id_link = "https://www.db.yugioh-card.com/" +\
+               cardId +\
+               "&request_locale=ko"
+
+req = requests.get(card_id_link)
+html = req.text
+status = req.status_code
+is_ok = req.ok
+print(status)
+print(req.ok)
+print(type(html))
+
+#selector #update_list
+cardBoosterTable = soup.select(
+    '#update_list'
+)
+
+print(cardBoosterTable)
+for t in cardBoosterTable:
+    ## Tag의 속성을 가져오기
+    print(t.text)
+    cardId = t.get('card_number')
+
+g = open('test_table.html','w', encoding = 'utf-8')
+g.write(html)
+g.close()
 
 
 cv2.waitKey(0)
