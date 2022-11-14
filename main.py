@@ -1,121 +1,54 @@
 import cv2
+import imutils as imutils
 import numpy as np
 import pytesseract
 import re
 import requests #request html
 from bs4 import BeautifulSoup #html parsing
+from imutils.contours import sort_contours
+from imutils.perspective import four_point_transform
+import pandas as pd
+import openpyxl
 
-pytesseract.pytesseract.tesseract_cmd = R'C:\Program Files\Tesseract-OCR\tesseract'
-config = ('-l eng --oem 3 --psm 7')
+def findRec(org_img):
+    img = imutils.resize(org_img, 500)
+    ratio = org_img.shape[1] / float(img.shape[1])
 
-img = cv2.imread('./resource/card.jpg')
-g = 3.0
+    blurred = cv2.GaussianBlur(img, (5, 5), 0)
+    canny = cv2.Canny(blurred, 100, 255, L2gradient=True)
 
-img = img.astype(np.float64)
-img = ((img / 255) ** (1 / g)) * 255
-img = img.astype(np.uint8)
+    cnts = cv2.findContours(canny.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = imutils.grab_contours(cnts)
+    cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
 
-img_gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    findCnt = []
+    # 정렬된 contours를 반복문으로 수행하며 4개의 꼭지점을 갖는 도형을 검출
+    for c in cnts:
+        peri = cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
 
-x, y, w, h = 730, 985, 180, 25
-roi = img[y:y+h, x:x+w]
-print(roi.shape)
-img2 = roi.copy()
-cv2.rectangle(roi, (0,0), (w-1, h-1), (0,255,0)) # roi 전체에 사각형 그리기
+        # 사각형만 판별해서 저장
+        if len(approx) == 4:
+            findCnt.append(approx)
 
+    # 만약 추출한 윤곽이 없을 경우 오류
+    if len(findCnt) == 0:
+        raise Exception(("Could not find outline."))
 
+    output = img.copy()
+    cards = []
+    for c in findCnt:
+        output = card = cv2.drawContours(output, [c], -1, (0,0,255),2)
+        cards.append(four_point_transform(org_img, c.reshape(4, 2) * ratio))
 
-cv2.imshow("img",img)
-cv2.imshow("roi", img2)
-roi_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-roi_gray = cv2.resize(roi_gray, dsize=(0, 0), fx=8, fy=8, interpolation=cv2.INTER_LINEAR)
+    return cards
 
-roi_bi = cv2.threshold(roi_gray,0,255,cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-cv2.imshow("roi_gray", roi_bi)
-
-#re_roi_bi = cv2.resize(roi_bi, dsize=(0, 0), fx=8, fy=8, interpolation=cv2.INTER_LINEAR)
-
-#cv2.imshow("re", re_roi_bi)
-
-text = pytesseract.image_to_string(roi_bi, config=config)
-print(text)
-text = text.replace(" ", "")
-text = text.replace("\n", "")
-text_list = text.split('-')
-#0 O, l 1, 등 OCR이 구분하지 못하는 경우 치환하며 진행 필요
-text_list[0] = re.sub(r"[^\uAC00-\uD7A30-9a-zA-Z\s]", "", text_list[0])
-text_list[1] = re.sub(r"[^\uAC00-\uD7A30-9a-zA-Z\s]", "", text_list[1])
-text_list[1] = text_list[1].replace("O","0")
-text = text_list[0] + '-' + text_list[1]
-
-print(text)
-cardKeyword = text
-
-yugioh_db = "https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=1&sess=1&rp=20&" +\
-            "keyword=" + cardKeyword +\
-            "&stype=4&ctype=&othercon=2&starfr=&starto=&pscalefr=&pscaleto=&linkmarkerfr=&linkmarkerto=&link_m=2&atkfr=&atkto=&deffr=&defto=&request_locale=ko"
-
-req = requests.get(yugioh_db)
-html = req.text
-status = req.status_code
-is_ok = req.ok
-
-print(status)
-print(req.ok)
-print(type(html))
-f = open('test.html','w', encoding = 'utf-8')
-f.write(html)
-f.close()
-
-soup = BeautifulSoup(html, 'html.parser')
-
-
-cardInfo = soup.select(
-    '#card_list > div > input.cnm'
-    )
-print(cardInfo)
-## my_titles는 list 객체
-for t in cardInfo:
-    ## Tag의 속성을 가져오기
-    print(t.text)
-    print(t.get('value'))
-
-cardIdLink = soup.select(
-    '#card_list > div > input.link_value'
-)
-
-for t in cardIdLink:
-    ## Tag의 속성을 가져오기
-    print(t.text)
-    cardId = t.get('value')
-
-card_id_link = "https://www.db.yugioh-card.com/" +\
-               cardId +\
-               "&request_locale=ko"
-
-req = requests.get(card_id_link)
-html = req.text
-status = req.status_code
-is_ok = req.ok
-print(status)
-print(req.ok)
-print(type(html))
-
-#selector #update_list
-cardBoosterTable = soup.select(
-    '#update_list'
-)
-
-print(cardBoosterTable)
-for t in cardBoosterTable:
-    ## Tag의 속성을 가져오기
-    print(t.text)
-    cardId = t.get('card_number')
-
-g = open('test_table.html','w', encoding = 'utf-8')
-g.write(html)
-g.close()
-
+org_img = cv2.imread('./resource/card16.jpg')
+cards = findRec(org_img)
+i = 0
+for img in cards:
+    i += 1
+    cv2.imshow("img" + str(i),img)
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()
