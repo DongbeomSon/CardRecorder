@@ -33,12 +33,10 @@ def findRec(org_img):
 
     # 만약 추출한 윤곽이 없을 경우 오류
     if len(findCnt) == 0:
-        raise Exception(("Could not find outline."))
+        raise Exception(("인식 실패"))
 
-    output = img.copy()
     cards = []
     for c in findCnt:
-        output = card = cv2.drawContours(output, [c], -1, (0,0,255),2)
         cards.append(four_point_transform(org_img, c.reshape(4, 2) * ratio))
 
     return cards
@@ -46,9 +44,9 @@ def findRec(org_img):
 org_img = cv2.imread('./resource/card16.jpg')
 cards = findRec(org_img)
 i = 0
-for img in cards:
-    i += 1
-    cv2.imshow("img" + str(i),img)
+for idx, img in enumerate(cards):
+
+    cv2.imshow("img" + str(idx),img)
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()
